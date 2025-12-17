@@ -1,6 +1,5 @@
 const axios = require('axios');
 
-// --- Logika YouTube Downloader (Class) ---
 class YouTubeDownloader {
     constructor() {
         this.baseUrl = 'https://p.savenow.to';
@@ -18,9 +17,9 @@ class YouTubeDownloader {
             'Cache-Control': 'no-cache'
         };
         
-        this.audioFormats = ['mp3', 'm4a', 'webm', 'aac', 'flac', 'opus', 'ogg', 'wav'];
+        // HAPUS FORMAT AUDIO, HANYA VIDEO SAJA
         this.videoFormats = ['4k', '1440', '1080', '720', '480', '320', '240', '144'];
-        this.supportedFormats = [...this.audioFormats, ...this.videoFormats];
+        this.supportedFormats = [...this.videoFormats];
     }
 
     validateFormat(formatQuality) {
@@ -28,7 +27,7 @@ class YouTubeDownloader {
     }
 
     async requestDownload(youtubeUrl, formatQuality) {
-        // Default ke 720 jika format salah
+        // Jika format salah atau user input mp3, paksa balik ke 720 (Video)
         if (!this.validateFormat(formatQuality)) {
             formatQuality = '720'; 
         }
@@ -46,7 +45,7 @@ class YouTubeDownloader {
             const response = await axios.get(downloadUrl, {
                 params: params,
                 headers: this.headers,
-                timeout: 10000 // 10 detik timeout awal
+                timeout: 10000 
             });
 
             if (response.data.progress_url) {
@@ -114,65 +113,64 @@ class YouTubeDownloader {
         const downloadData = await this.checkProgress(progressData.progress_url);
         
         if (!downloadData) {
-            throw new Error("waktu habis saat memproses video atau terjadi kesalahan server.");
+            throw new Error("waktu habis saat memproses video.");
         }
         
         return {
             title: progressData.title,
             thumbnail: progressData.image,
-            format: formatQuality,
+            quality: formatQuality, // Info kualitas yang dipilih
+            type: 'mp4', // Hardcoded karena sekarang khusus video
             download_url: downloadData.download_url
         };
     }
 }
 
-// --- Struktur Plugin untuk Server.js ---
 module.exports = {
-    name: 'youtube download',
-    desc: 'download audio/video dari youtube menggunakan api',
+    name: 'youtube video downloader (mp4)',
+    desc: 'download video mp4 dari youtube',
     method: 'GET',
-    category: 'download', // Akan menjadi /downloader/youtube
-    path: '/youtube',
-    // Parameter untuk dokumentasi otomatis
+    category: 'downloader',
+    path: '/ytmp4',
     params: [
         { name: 'url', required: true },
-        { name: 'format', required: false }
+        { name: 'format', required: true }
     ],
-    example: '/downloader/youtube?url=https://www.youtube.com/watch?v=daQSMxfvelw&format=mp3',
+    example: '/downloader/youtube?url=https://www.youtube.com/watch?v=daQSMxfvelw&format=720',
     
-    // Fungsi utama yang dipanggil server.js
     run: async (req, res) => {
         const { url, format } = req.query;
+        
+        // Inisialisasi class di awal untuk mengambil daftar format
+        const downloader = new YouTubeDownloader();
+        const availableFormats = downloader.videoFormats;
 
-        // 1. Validasi Input
         if (!url) {
             return res.json({
                 status: false,
-                message: 'parameter url diperlukan. contoh: ?url=https://youtube.com/watch?v=...'
+                message: 'parameter url diperlukan.',
+                available_formats: availableFormats // Tampilkan list format saat error/info
             });
         }
 
-        // Tentukan format default jika tidak diisi
         const selectedFormat = format || '720';
 
         try {
-            // 2. Eksekusi Downloader
-            const downloader = new YouTubeDownloader();
             const result = await downloader.download(url, selectedFormat);
 
-            // 3. Kirim Response Sukses
             return res.json({
                 status: true,
-                creator: "haikal",
-                message: 'berhasil mengambil data video',
+                creator: "haikal"
+                message: 'berhasil mengambil data',
+                available_formats: availableFormats, // FITUR BARU: Menampilkan list format di sini
                 result: result
             });
 
         } catch (error) {
-            // 4. Handle Error
             return res.json({
                 status: false,
-                message: error.message || 'terjadi kesalahan internal'
+                message: error.message || 'terjadi kesalahan internal',
+                available_formats: availableFormats // Tetap tampilkan list meski error agar user tahu opsinya
             });
         }
     }
