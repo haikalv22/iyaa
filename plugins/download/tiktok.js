@@ -44,6 +44,7 @@ module.exports = {
       // Format response yang rapi
       res.json({
         status: true,
+        creator: "haikal",
         data: {
           url_original: url,
           download_url: data.data?.play || data.data?.hdplay || data.data?.url,

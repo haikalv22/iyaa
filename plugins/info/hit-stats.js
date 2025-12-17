@@ -37,6 +37,7 @@ module.exports = {
 
             const response = {
                 status: true,
+                creator: "haikal",
                 storage_mode: "memory (resets on restart)", // Info bahwa ini di memori
                 total_requests: totalRequests,
                 total_endpoints_tracked: Object.keys(endpoints).length,

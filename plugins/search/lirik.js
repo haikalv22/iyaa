@@ -50,6 +50,7 @@ module.exports = {
       // Mengirimkan respons dengan status 200 (OK)
       res.status(200).json({
         status: true,
+        creator: "haikal",
         message: 'lirik berhasil dibuat',
         prompt: prompt,
         result: lyricsText.trim() // Hapus spasi di awal/akhir jika ada
