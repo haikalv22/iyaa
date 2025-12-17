@@ -8,9 +8,9 @@ const STATS_FILE_PATH = path.join(__dirname, "..", "..", "database", "stats.json
 module.exports = {
     name: "total hit api",
     desc: "menampilkan total hit (jumlah akses) pada semua endpoint api",
-    category: "stats",
+    category: "info",
     method: "GET",
-    path: "/stats",
+    path: "/hit-stats",
     // Tambahkan params agar terlihat di /api/info
     params: ["detail"], 
     
@@ -22,7 +22,7 @@ module.exports = {
                 return res.status(200).json({
                     status: true,
                     total_requests: 0,
-                    message: "File statistik belum ditemukan. Mungkin server baru di-deploy atau belum ada hit."
+                    message: "file statistik belum ditemukan. mungkin server baru di-deploy atau belum ada hit."
                 });
             }
 
