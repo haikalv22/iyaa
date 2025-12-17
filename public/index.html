@@ -544,39 +544,39 @@
     <header class="mb-8 sm:mb-12 text-center fade-in-up" style="animation-delay: 100ms">
       <h1 class="text-3xl sm:text-4xl font-bold gradient-text mb-2 sm:mb-3">API FYBOT</h1>
       <p class="text-gray-600 text-base sm:text-lg max-w-3xl mx-auto px-2 sm:px-0">
-        ini adalah web api fybot dan owner nya adalah haikal ganteng 😎
+        selamat datang di api-fybot
       </p>
       
       <!-- Stats dengan animasi -->
       <div class="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 max-w-2xl mx-auto stats-grid">
         <div class="bg-white p-3 sm:p-4 rounded-lg border border-gray-200">
           <div class="text-xl sm:text-2xl font-bold text-gray-900 count-animate" id="total-endpoints">0</div>
-          <div class="text-xs sm:text-sm text-gray-600">Total Endpoints</div>
+          <div class="text-xs sm:text-sm text-gray-600">total endpoints</div>
         </div>
         <div class="bg-white p-3 sm:p-4 rounded-lg border border-gray-200">
           <div class="text-xl sm:text-2xl font-bold text-gray-900 count-animate" id="total-categories" style="animation-delay: 150ms">0</div>
-          <div class="text-xs sm:text-sm text-gray-600">Categories</div>
+          <div class="text-xs sm:text-sm text-gray-600">categories</div>
         </div>
         <div class="bg-white p-3 sm:p-4 rounded-lg border border-gray-200">
           <div class="text-xl sm:text-2xl font-bold text-gray-900 count-animate" id="active-category" style="animation-delay: 200ms">All</div>
-          <div class="text-xs sm:text-sm text-gray-600">Active Category</div>
+          <div class="text-xs sm:text-sm text-gray-600">active category</div>
         </div>
         <div class="bg-white p-3 sm:p-4 rounded-lg border border-gray-200">
           <div class="text-xl sm:text-2xl font-bold text-gray-900 count-animate" id="filtered-count" style="animation-delay: 250ms">0</div>
-          <div class="text-xs sm:text-sm text-gray-600">Displayed</div>
+          <div class="text-xs sm:text-sm text-gray-600">displayed</div>
         </div>
       </div>
       
       <!-- Quick actions dengan button group -->
       <div class="mt-4 sm:mt-6 flex flex-wrap gap-2 sm:gap-3 justify-center button-group">
         <button id="expand-all" class="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 border border-gray-300 transition-colors">
-          Expand All
+          expand all
         </button>
         <button id="collapse-all" class="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 border border-gray-300 transition-colors">
-          Collapse All
+          collapse all
         </button>
         <button id="export-json" class="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 border border-gray-300 transition-colors">
-          Export JSON
+          export json
         </button>
       </div>
     </header>
@@ -594,7 +594,7 @@
             </div>
             <input type="text" 
                    id="search-endpoints" 
-                   placeholder="Search endpoints by name, description, or path..." 
+                   placeholder="search endpoints by name, description, or path..." 
                    class="w-full pl-10 sm:pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-1 focus:ring-gray-900 focus:border-gray-900 outline-none text-sm sm:text-base bg-white"
                    autocomplete="off">
             <div class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center pointer-events-none">
@@ -608,11 +608,11 @@
       <section class="mb-6 sm:mb-10 fade-in-up" style="animation-delay: 250ms">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-3 sm:mb-4">
           <div>
-            <h2 class="text-base sm:text-lg font-semibold text-gray-900">Filter by Category</h2>
-            <p class="text-xs sm:text-sm text-gray-500 mt-1">Click category to filter endpoints</p>
+            <h2 class="text-base sm:text-lg font-semibold text-gray-900">filter by category</h2>
+            <p class="text-xs sm:text-sm text-gray-500 mt-1">click category to filter endpoints</p>
           </div>
           <button id="clear-filters" class="text-xs sm:text-sm text-gray-500 hover:text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-100 border border-gray-300 transition-colors w-full sm:w-auto">
-            Reset All Filters
+            reset all filters
           </button>
         </div>
         <div id="categories-nav" class="flex flex-nowrap gap-2 overflow-x-auto pb-2">
@@ -650,7 +650,7 @@
             </svg>
           </div>
           <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No Results Found</h3>
-          <p class="text-gray-600 text-sm sm:text-base mb-4 sm:mb-6">No endpoints match your search criteria.</p>
+          <p class="text-gray-600 text-sm sm:text-base mb-4 sm:mb-6">no endpoints match your search criteria.</p>
           <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center">
             <button id="reset-search" class="px-4 sm:px-6 py-2 sm:py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors text-sm sm:text-base">
               Reset Search
