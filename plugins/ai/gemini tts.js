@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 module.exports = {
-  name: 'gemini tts',
+  name: 'kon TTS Gemini',
   desc: 'Text to Speech Gemini dengan pilihan Voice dan Style',
   category: 'ai',
   method: 'get',
@@ -27,8 +27,7 @@ module.exports = {
       const targetStyle = style || 'default';
       const apiUrl = 'https://api.ryzumi.vip/api/ai/tts-gemini';
 
-      // --- PERBAIKAN UTAMA DI SINI ---
-      // Kita tambahkan 'headers' agar dianggap sebagai browser (Bypass 403)
+      // --- KONFIGURASI STEALTH (MENYAMAR SEBAGAI BROWSER) ---
       const response = await axios.get(apiUrl, {
         params: {
           text: text,
@@ -36,10 +35,29 @@ module.exports = {
           style: targetStyle
         },
         headers: {
-          // User-Agent ini membuat server mengira kita adalah browser Chrome di Windows
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
-          'Accept': 'audio/wav,application/json,text/plain,*/*'
+          // 1. User Agent Chrome terbaru
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          
+          // 2. Referer: Berpura-pura kita mengakses dari halaman web mereka sendiri
+          'Referer': 'https://api.ryzumi.vip/docs',
+          'Origin': 'https://api.ryzumi.vip',
+          
+          // 3. Accept Language: Bahasa browser (Inggris/Indonesia)
+          'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+          
+          // 4. Accept tipe konten umum
+          'Accept': 'application/json, text/plain, */*',
+          
+          // 5. Header tambahan agar terlihat 'polite'
+          'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"Windows"',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+          'Connection': 'keep-alive'
         },
+        // Wajib arraybuffer untuk file audio
         responseType: 'arraybuffer' 
       });
 
@@ -50,14 +68,17 @@ module.exports = {
     } catch (error) {
       console.error('Error Ryuzumi TTS:', error.message);
       
-      // Tampilkan error lebih detail jika ada response body dari sana
+      // Jika masih error, kita intip pesan error dari server sana
       if (error.response) {
-          console.error('Data Error:', error.response.data.toString());
+          console.error('Status Code:', error.response.status);
+          // Convert buffer ke string untuk melihat pesan error html/json
+          const errorData = Buffer.from(error.response.data).toString();
+          console.error('Data Error dari Ryuzumi:', errorData.substring(0, 200)); // Lihat 200 huruf pertama
       }
 
       res.status(500).json({
         status: false,
-        message: 'Gagal mengambil data dari server Ryzumi (Terblokir/Error).',
+        message: 'Gagal mengambil data (Kemungkinan IP Server Anda diblokir Cloudflare).',
         error: error.message
       });
     }
