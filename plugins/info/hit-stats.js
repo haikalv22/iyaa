@@ -1,6 +1,6 @@
 module.exports = {
-    name: "Total Hit API",
-    desc: "Menampilkan total hit (jumlah akses) pada semua endpoint API (In-Memory).",
+    name: "total hit api",
+    desc: "menampilkan total hit (jumlah akses) pada semua endpoint api (in-memory).",
     category: "info",
     method: "GET",
     path: "/hit-stats",
@@ -37,7 +37,7 @@ module.exports = {
 
             const response = {
                 status: true,
-                storage_mode: "Memory (Resets on Restart)", // Info bahwa ini di memori
+                storage_mode: "memory (resets on restart)", // Info bahwa ini di memori
                 total_requests: totalRequests,
                 total_endpoints_tracked: Object.keys(endpoints).length,
                 timestamp: new Date().toISOString()
@@ -62,7 +62,7 @@ module.exports = {
             res.status(200).json(response);
 
         } catch (err) {
-            console.error("Error in /info/hit-stats:", err);
+            console.error("error in /info/hit-stats:", err);
             res.status(500).json({ status: false, message: err.message });
         }
     }
