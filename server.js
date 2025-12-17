@@ -8,6 +8,41 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// --- KONFIGURASI DATABASE STATS ---
+const dbFolder = path.join(__dirname, 'database');
+const statsFile = path.join(dbFolder, 'stats.json');
+
+// Pastikan folder database ada
+if (!fs.existsSync(dbFolder)) {
+  fs.mkdirSync(dbFolder);
+}
+
+// Pastikan file stats.json ada
+if (!fs.existsSync(statsFile)) {
+  fs.writeFileSync(statsFile, JSON.stringify({ total: 0, endpoints: {} }, null, 2));
+}
+
+// Fungsi untuk menambah Hit
+const addHit = (endpoint) => {
+  try {
+    const stats = JSON.parse(fs.readFileSync(statsFile));
+    
+    // Tambah total global
+    stats.total = (stats.total || 0) + 1;
+    
+    // Tambah hit spesifik endpoint
+    if (!stats.endpoints[endpoint]) {
+      stats.endpoints[endpoint] = 0;
+    }
+    stats.endpoints[endpoint] += 1;
+    
+    fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
+  } catch (err) {
+    console.error('Gagal menyimpan stats:', err.message);
+  }
+};
+// ----------------------------------
+
 app.set('json spaces', 2);
 
 const limiter = rateLimit({
@@ -73,6 +108,10 @@ function registerPlugins() {
       if (['get', 'post', 'put', 'delete'].includes(method)) {
         app[method](fullPath, async (req, res) => {
           try {
+            // --- TRACKING HIT ---
+            addHit(fullPath); 
+            // --------------------
+
             await plugin.run(req, res);
           } catch (err) {
             console.error(`Error di ${fullPath}:`, err.message);
@@ -126,9 +165,15 @@ function registerPlugins() {
 // Register semua plugin
 const { count, list: apiList } = registerPlugins();
 
-// Endpoint /api/info yang sudah diperbaiki
+// Endpoint /api/info yang sudah diperbaiki & DITAMBAHKAN STATS
 app.get('/api/info', (req, res) => {
   try {
+    // Ambil data stats terbaru
+    let statsData = { total: 0, endpoints: {} };
+    if (fs.existsSync(statsFile)) {
+        statsData = JSON.parse(fs.readFileSync(statsFile));
+    }
+
     // Format API list untuk frontend
     const formattedApis = apiList.map(api => {
       const apiData = {
@@ -137,6 +182,8 @@ app.get('/api/info', (req, res) => {
         kategori: api.kategori || 'General',
         method: api.method || 'GET',
         endpoint: api.endpoint || '/',
+        // Tambahkan info hit
+        total_hit: statsData.endpoints[api.endpoint] || 0,
         contoh: api.contoh || ''
       };
       
@@ -154,6 +201,7 @@ app.get('/api/info', (req, res) => {
       server: "REST API Premium",
       version: "1.0.0",
       total_endpoints: formattedApis.length,
+      total_requests: statsData.total, // Total semua hit
       endpoint_categories: [...new Set(formattedApis.map(api => api.kategori))],
       apis: formattedApis.sort((a, b) => {
         // Sort by category first, then by name
@@ -237,6 +285,13 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
   console.log(`📊 Total plugin terdaftar: ${count}`);
+  
+  // Baca stats awal
+  let initialStats = { total: 0 };
+  if(fs.existsSync(statsFile)) {
+     initialStats = JSON.parse(fs.readFileSync(statsFile));
+  }
+  console.log(`📈 Total Requests saat ini: ${initialStats.total}`);
   
   // Tampilkan semua endpoint yang terdaftar
   if (apiList.length > 0) {
