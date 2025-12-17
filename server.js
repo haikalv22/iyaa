@@ -8,38 +8,23 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- KONFIGURASI DATABASE STATS ---
-const dbFolder = path.join(__dirname, 'database');
-const statsFile = path.join(dbFolder, 'stats.json');
+// --- PERBAIKAN: GUNAKAN GLOBAL VARIABLE, BUKAN FILE ---
+// Kita simpan stats di variable global agar bisa diakses di mana saja
+global.apiStats = {
+  total: 0,
+  endpoints: {}
+};
 
-// Pastikan folder database ada
-if (!fs.existsSync(dbFolder)) {
-  fs.mkdirSync(dbFolder);
-}
-
-// Pastikan file stats.json ada
-if (!fs.existsSync(statsFile)) {
-  fs.writeFileSync(statsFile, JSON.stringify({ total: 0, endpoints: {} }, null, 2));
-}
-
-// Fungsi untuk menambah Hit
+// Fungsi untuk menambah Hit (Versi Memory)
 const addHit = (endpoint) => {
-  try {
-    const stats = JSON.parse(fs.readFileSync(statsFile));
-    
-    // Tambah total global
-    stats.total = (stats.total || 0) + 1;
-    
-    // Tambah hit spesifik endpoint
-    if (!stats.endpoints[endpoint]) {
-      stats.endpoints[endpoint] = 0;
-    }
-    stats.endpoints[endpoint] += 1;
-    
-    fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
-  } catch (err) {
-    console.error('Gagal menyimpan stats:', err.message);
+  // Tambah total global
+  global.apiStats.total += 1;
+  
+  // Tambah hit spesifik endpoint
+  if (!global.apiStats.endpoints[endpoint]) {
+    global.apiStats.endpoints[endpoint] = 0;
   }
+  global.apiStats.endpoints[endpoint] += 1;
 };
 // ----------------------------------
 
@@ -60,7 +45,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Fungsi auto-register plugins dengan support params
+// Fungsi auto-register plugins
 function registerPlugins() {
   const pluginsDir = path.join(__dirname, 'plugins');
   const apiList = [];
@@ -82,50 +67,34 @@ function registerPlugins() {
       const filePath = path.join(categoryPath, file);
       const plugin = require(filePath);
 
-      // Validasi plugin
       if (!plugin.name || !plugin.desc || !plugin.method || !plugin.path || typeof plugin.run !== 'function') {
-        console.error(`Plugin ${file} tidak valid`);
         return;
       }
 
-      // Set default category jika belum ada
       if (!plugin.category) {
         plugin.category = category.charAt(0).toUpperCase() + category.slice(1);
       }
 
       const method = plugin.method.toLowerCase();
-      
-      // Format path
       let fullPath = plugin.path;
-      if (!fullPath.startsWith('/')) {
-        fullPath = '/' + fullPath;
-      }
-      
-      // Tambahkan kategori di depan path
+      if (!fullPath.startsWith('/')) fullPath = '/' + fullPath;
       fullPath = `/${plugin.category.toLowerCase()}${fullPath}`;
 
-      // Register route
       if (['get', 'post', 'put', 'delete'].includes(method)) {
         app[method](fullPath, async (req, res) => {
           try {
-            // --- TRACKING HIT ---
+            // --- TRACKING HIT (MEMORY) ---
             addHit(fullPath); 
-            // --------------------
-
+            // -----------------------------
             await plugin.run(req, res);
           } catch (err) {
             console.error(`Error di ${fullPath}:`, err.message);
-            res.status(500).json({ 
-              status: false, 
-              message: 'Internal Server Error: ' + err.message 
-            });
+            res.status(500).json({ status: false, message: 'Server Error' });
           }
         });
 
-        console.log(`Registered: ${method.toUpperCase()} ${fullPath} -> ${plugin.name}`);
         registeredCount++;
 
-        // Tambahkan ke daftar API dengan informasi params
         const apiInfo = {
           nama: plugin.name,
           deskripsi: plugin.desc,
@@ -133,26 +102,9 @@ function registerPlugins() {
           method: plugin.method.toUpperCase(),
           endpoint: fullPath
         };
-
-        // Jika plugin memiliki params, tambahkan ke info
-        if (plugin.params && Array.isArray(plugin.params)) {
-          apiInfo.parameter = plugin.params.map(param => ({
-            nama: param,
-            tipe: 'query',
-            required: true
-          }));
-          
-          // Tambahkan contoh penggunaan
-          if (method === 'get') {
-            const exampleParams = plugin.params.map(p => `${p}=value`).join('&');
-            apiInfo.contoh = `${fullPath}?${exampleParams}`;
-          }
-        }
-
-        // Tambahkan contoh jika ada di plugin
-        if (plugin.example) {
-          apiInfo.contoh = plugin.example;
-        }
+        
+        if (plugin.params) apiInfo.parameter = plugin.params;
+        if (plugin.example) apiInfo.contoh = plugin.example;
 
         apiList.push(apiInfo);
       }
@@ -162,161 +114,42 @@ function registerPlugins() {
   return { count: registeredCount, list: apiList };
 }
 
-// Register semua plugin
 const { count, list: apiList } = registerPlugins();
 
-// Endpoint /api/info yang sudah diperbaiki & DITAMBAHKAN STATS
+// Endpoint /api/info (Versi Memory)
 app.get('/api/info', (req, res) => {
   try {
-    // Ambil data stats terbaru
-    let statsData = { total: 0, endpoints: {} };
-    if (fs.existsSync(statsFile)) {
-        statsData = JSON.parse(fs.readFileSync(statsFile));
-    }
+    // Ambil stats dari memory global
+    const statsData = global.apiStats;
 
-    // Format API list untuk frontend
-    const formattedApis = apiList.map(api => {
-      const apiData = {
-        nama: api.nama || 'Unnamed API',
-        deskripsi: api.deskripsi || 'No description available',
-        kategori: api.kategori || 'General',
-        method: api.method || 'GET',
-        endpoint: api.endpoint || '/',
-        // Tambahkan info hit
-        total_hit: statsData.endpoints[api.endpoint] || 0,
-        contoh: api.contoh || ''
-      };
-      
-      // Tambahkan parameter jika ada
-      if (api.parameter && Array.isArray(api.parameter) && api.parameter.length > 0) {
-        apiData.parameter = api.parameter;
-      }
-      
-      return apiData;
-    });
+    const formattedApis = apiList.map(api => ({
+        ...api,
+        // Ambil info hit dari memory
+        total_hit: statsData.endpoints[api.endpoint] || 0
+    }));
 
-    // Response dengan format yang benar
     const response = {
       status: true,
       server: "REST API Premium",
-      version: "1.0.0",
       total_endpoints: formattedApis.length,
-      total_requests: statsData.total, // Total semua hit
+      total_requests: statsData.total, // Total dari memory
       endpoint_categories: [...new Set(formattedApis.map(api => api.kategori))],
-      apis: formattedApis.sort((a, b) => {
-        // Sort by category first, then by name
-        if (a.kategori !== b.kategori) {
-          return a.kategori.localeCompare(b.kategori);
-        }
-        return a.nama.localeCompare(b.nama);
-      })
+      apis: formattedApis.sort((a, b) => a.kategori.localeCompare(b.kategori))
     };
     
     res.status(200).json(response);
   } catch (error) {
-    console.error('Error in /api/info endpoint:', error);
-    res.status(500).json({
-      status: false,
-      message: 'Failed to load API information',
-      error: error.message
-    });
+    res.status(500).json({ status: false, message: error.message });
   }
 });
 
-// Endpoint untuk test koneksi
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: true,
-    message: 'Server is healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    total_plugins: count
-  });
-});
+// Endpoint standard
+app.get('/api/health', (req, res) => res.json({ status: true, message: 'Healthy' }));
+app.get('/api/ping', (req, res) => res.json({ status: true, message: 'Running' }));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-// Test endpoint
-app.get('/api/ping', (req, res) => {
-  res.status(200).json({
-    status: true,
-    message: 'Server is running',
-    timestamp: new Date().toISOString()
-  });
-});
+app.use((req, res) => res.status(404).json({ status: false, message: 'Not Found' }));
 
-// Route utama - serve frontend
-app.get('/', (req, res) => {
-  res.status(200).sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Serve semua file statis dari public
-app.get('/:filename', (req, res, next) => {
-  const filename = req.params.filename;
-  const filePath = path.join(__dirname, 'public', filename);
-  
-  if (fs.existsSync(filePath) && !filename.includes('..')) {
-    res.sendFile(filePath);
-  } else {
-    next();
-  }
-});
-
-// 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ 
-    status: false, 
-    message: 'Endpoint tidak ditemukan',
-    requested_url: req.originalUrl,
-    method: req.method,
-    available_endpoints: '/api/info'
-  });
-});
-
-// Global Error Handler
-app.use((err, req, res, next) => {
-  console.error('Global error:', err.stack);
-  res.status(500).json({ 
-    status: false, 
-    message: 'Server Error: ' + err.message,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
-  console.log(`📊 Total plugin terdaftar: ${count}`);
-  
-  // Baca stats awal
-  let initialStats = { total: 0 };
-  if(fs.existsSync(statsFile)) {
-     initialStats = JSON.parse(fs.readFileSync(statsFile));
-  }
-  console.log(`📈 Total Requests saat ini: ${initialStats.total}`);
-  
-  // Tampilkan semua endpoint yang terdaftar
-  if (apiList.length > 0) {
-    console.log('\n📋 Endpoint yang tersedia:');
-    const categories = {};
-    
-    apiList.forEach(api => {
-      if (!categories[api.kategori]) {
-        categories[api.kategori] = [];
-      }
-      categories[api.kategori].push(api);
-    });
-    
-    Object.keys(categories).sort().forEach(category => {
-      console.log(`\n  📁 ${category}:`);
-      categories[category].forEach(api => {
-        const paramInfo = api.parameter ? ` [${api.parameter.map(p => p.nama).join(', ')}]` : '';
-        console.log(`    ${api.method} ${api.endpoint} - ${api.nama}${paramInfo}`);
-      });
-    });
-  } else {
-    console.log('\n⚠️  Tidak ada plugin yang terdaftar. Pastikan folder "plugins" berisi plugin.');
-  }
-  
-  console.log(`\n📚 Dokumentasi: http://localhost:${PORT}`);
-  console.log(`🔍 API Info: http://localhost:${PORT}/api/info`);
-  console.log(`🏓 Health Check: http://localhost:${PORT}/api/ping`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
