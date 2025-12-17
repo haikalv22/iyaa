@@ -1,15 +1,15 @@
 const axios = require('axios');
 
 module.exports = {
-  name: 'Ryuzumi TTS Gemini',
+  name: 'gemini tts',
   desc: 'Text to Speech Gemini dengan pilihan Voice dan Style',
   category: 'ai',
   method: 'get',
   path: '/gemini-tts',
   params: [
     { name: 'text', required: true },
-    { name: 'voice', required: false }, // Default: Leda
-    { name: 'style', required: false }  // Default: default
+    { name: 'voice', required: false }, 
+    { name: 'style', required: false }  
   ],
   
   run: async (req, res) => {
@@ -25,15 +25,20 @@ module.exports = {
 
       const targetVoice = voice || 'Leda';
       const targetStyle = style || 'default';
-
-      // --- URL YANG SUDAH DIPERBAIKI (TIDAK ADA TYPO) ---
       const apiUrl = 'https://api.ryzumi.vip/api/ai/tts-gemini';
 
+      // --- PERBAIKAN UTAMA DI SINI ---
+      // Kita tambahkan 'headers' agar dianggap sebagai browser (Bypass 403)
       const response = await axios.get(apiUrl, {
         params: {
           text: text,
           voice: targetVoice,
           style: targetStyle
+        },
+        headers: {
+          // User-Agent ini membuat server mengira kita adalah browser Chrome di Windows
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+          'Accept': 'audio/wav,application/json,text/plain,*/*'
         },
         responseType: 'arraybuffer' 
       });
@@ -44,9 +49,15 @@ module.exports = {
 
     } catch (error) {
       console.error('Error Ryuzumi TTS:', error.message);
+      
+      // Tampilkan error lebih detail jika ada response body dari sana
+      if (error.response) {
+          console.error('Data Error:', error.response.data.toString());
+      }
+
       res.status(500).json({
         status: false,
-        message: 'Gagal mengambil data dari server Ryzumi.',
+        message: 'Gagal mengambil data dari server Ryzumi (Terblokir/Error).',
         error: error.message
       });
     }
