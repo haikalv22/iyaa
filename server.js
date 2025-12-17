@@ -118,19 +118,34 @@ function registerPlugins() {
         };
 
         // Jika plugin memiliki params, tambahkan ke info
-        if (plugin.params && Array.isArray(plugin.params)) {
-          apiInfo.parameter = plugin.params.map(param => ({
-            nama: param,
-            tipe: 'query', // Asumsi default adalah query parameter
-            required: true // Asumsi default adalah required
-          }));
-          
-          // Tambahkan contoh penggunaan otomatis jika GET
-          if (method === 'get' && !plugin.example) {
-            const exampleParams = plugin.params.map(p => `${p}=value`).join('&');
-            apiInfo.contoh = `${fullPath}?${exampleParams}`;
-          }
-        }
+        // KODE BARU (PASTE DI SERVER.JS)
+if (plugin.params && Array.isArray(plugin.params)) {
+  apiInfo.parameter = plugin.params.map(param => {
+    // Cek apakah formatnya object (misal: {name:'url', required: false})
+    if (typeof param === 'object') {
+        return {
+            nama: param.name,
+            tipe: 'query',
+            required: param.required !== false // Default true, kecuali diset false
+        };
+    }
+    // Jika format string biasa, anggap required (biar plugin lama tetap jalan)
+    return {
+        nama: param,
+        tipe: 'query',
+        required: true
+    };
+  });
+  
+  // Tambahkan contoh penggunaan otomatis (Update sedikit logikanya)
+  if (plugin.method.toLowerCase() === 'get' && !plugin.example) {
+     const exampleParams = plugin.params.map(p => {
+         const name = typeof p === 'object' ? p.name : p;
+         return `${name}=value`;
+     }).join('&');
+     apiInfo.contoh = `${fullPath}?${exampleParams}`;
+  }
+}
 
         // Tambahkan contoh jika ada di plugin (override yang dibuat otomatis)
         if (plugin.example) {

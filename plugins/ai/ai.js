@@ -58,10 +58,16 @@ module.exports = {
   name: 'gemini ai',
   desc: 'tanya jawab dengan ai gemini (support text & image url)',
   category: 'ai',
-  method: 'get',           // Bisa diakses via GET
-  path: '/gemini',         // Endpoint: /api/ai/gemini
-  params: ['prompt', 'url'], // Parameter yang dibutuhkan
-  example: '/api/ai/gemini?prompt=jelaskan+gambar+ini&url=https://example.com/gambar.jpg', // Contoh untuk /api/info
+  method: 'get',
+  path: '/gemini',
+  
+  // Konfigurasi Parameter (Sesuai Solusi 2)
+  params: [
+    { name: 'prompt', required: true },  // Prompt Wajib
+    { name: 'url', required: false }     // URL Tidak Wajib (Optional)
+  ],
+
+  example: '/api/ai/gemini?prompt=jelaskan+gambar+ini&url=https://example.com/gambar.jpg', 
   
   run: async (req, res) => {
     try {
@@ -98,7 +104,6 @@ module.exports = {
       });
 
       // 5. Kirim Response JSON ke User
-      // Kita cek apakah hasilnya gambar atau teks
       const responseData = {
         status: true,
         creator: "haikal",
