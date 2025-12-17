@@ -59,7 +59,7 @@ class YouTubeDownloader {
             }
 
         } catch (error) {
-            console.error("error requesting download:", error.message);
+            console.error("Error requesting download:", error.message);
             return null;
         }
     }
@@ -107,13 +107,13 @@ class YouTubeDownloader {
         const progressData = await this.requestDownload(youtubeUrl, formatQuality);
         
         if (!progressData) {
-            throw new Error("gagal mendapatkan metadata video, cek url atau coba lagi.");
+            throw new Error("Gagal mendapatkan metadata video. Cek URL atau coba lagi.");
         }
         
         const downloadData = await this.checkProgress(progressData.progress_url);
         
         if (!downloadData) {
-            throw new Error("waktu habis saat memproses video.");
+            throw new Error("Waktu habis saat memproses video.");
         }
         
         return {
@@ -127,14 +127,14 @@ class YouTubeDownloader {
 }
 
 module.exports = {
-    name: 'youtube video downloader (mp4)',
-    desc: 'download video mp4 dari youtube',
+    name: 'YouTube Video Downloader (MP4)',
+    desc: 'Download Video MP4 dari YouTube (No Audio Support)',
     method: 'GET',
-    category: 'downloader',
-    path: '/ytmp4',
+    category: 'Downloader',
+    path: '/youtube',
     params: [
         { name: 'url', required: true },
-        { name: 'format', required: true }
+        { name: 'format', required: false }
     ],
     example: '/downloader/youtube?url=https://www.youtube.com/watch?v=daQSMxfvelw&format=720',
     
@@ -148,7 +148,7 @@ module.exports = {
         if (!url) {
             return res.json({
                 status: false,
-                message: 'parameter url diperlukan.',
+                message: 'Parameter URL diperlukan.',
                 available_formats: availableFormats // Tampilkan list format saat error/info
             });
         }
@@ -160,8 +160,7 @@ module.exports = {
 
             return res.json({
                 status: true,
-                creator: "haikal"
-                message: 'berhasil mengambil data',
+                message: 'Berhasil mengambil data video',
                 available_formats: availableFormats, // FITUR BARU: Menampilkan list format di sini
                 result: result
             });
@@ -169,7 +168,7 @@ module.exports = {
         } catch (error) {
             return res.json({
                 status: false,
-                message: error.message || 'terjadi kesalahan internal',
+                message: error.message || 'Terjadi kesalahan internal',
                 available_formats: availableFormats // Tetap tampilkan list meski error agar user tahu opsinya
             });
         }
