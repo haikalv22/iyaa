@@ -19,6 +19,9 @@
     "uuid": "^11.1.0",
     "form-data": "^4.0.0",
     "node-fetch": "^2.6.11",
+    "puppeteer": "^22.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "yt-search": "^2.12.1"
   },
   "devDependencies": {
