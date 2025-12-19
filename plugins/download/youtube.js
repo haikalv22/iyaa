@@ -1,26 +1,20 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-// Aktifkan Stealth Plugin agar tidak terdeteksi sebagai bot
-puppeteer.use(StealthPlugin());
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 
 module.exports = {
-  // Informasi Plugin untuk Server.js
-  name: 'YouTube Downloader',
+  name: 'youTube Downloader',
   desc: 'Mendapatkan detail video dan link download dari YouTube',
-  category: 'Downloader', // Akan menjadi prefix path: /downloader
+  category: 'Downloader',
   method: 'GET',
-  path: '/youtube', // Endpoint akhir: /downloader/youtube
+  path: '/youtube',
   params: [
-    { name: 'url', required: true } // Parameter yang dibutuhkan
+    { name: 'url', required: true }
   ],
   example: '/downloader/youtube?url=https://www.youtube.com/watch?v=CfdkLVxVJC0',
 
-  // Logika Utama
   run: async (req, res) => {
     const { url } = req.query;
 
-    // Validasi URL
     if (!url) {
       return res.status(400).json({
         status: false,
@@ -31,37 +25,32 @@ module.exports = {
     let browser = null;
 
     try {
-      // Launch Browser
+      // --- KONFIGURASI KHUSUS VERCEL/SERVERLESS ---
       browser = await puppeteer.launch({
-        headless: 'new', // Mode tanpa tampilan GUI
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-blink-features=AutomationControlled'
-        ]
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true,
       });
 
       const page = await browser.newPage();
 
-      // Set User Agent agar terlihat seperti browser asli
-      await page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-        '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      );
+      // Manual User Agent (Pengganti Stealth Plugin agar tidak terdeteksi)
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      
+      await page.setViewport({ width: 1280, height: 720 });
 
-      await page.setViewport({ width: 1366, height: 768 });
-
-      // Pergi ke website target
+      // Timeout dipercepat agar tidak kena limit Vercel (maks 10 detik di plan Hobby)
       await page.goto('https://www.ytbsaver.com', {
-        waitUntil: 'networkidle2',
-        timeout: 60000 // Timeout 60 detik jaga-jaga koneksi lambat
+        waitUntil: 'domcontentloaded', // Lebih cepat daripada networkidle2
+        timeout: 10000 
       });
 
-      // Tunggu sebentar (sesuai kode aslimu)
-      await new Promise(r => setTimeout(r, 2000));
+      // Tunggu selector muncul (lebih aman daripada sleep manual)
+      // Kita tunggu input field atau tombol convert muncul
+      await new Promise(r => setTimeout(r, 1000)); 
 
-      // Eksekusi script di dalam halaman browser (evaluate)
       const result = await page.evaluate(async (targetUrl) => {
         try {
           const res = await fetch(
@@ -69,7 +58,10 @@ module.exports = {
             {
               method: 'POST',
               headers: {
-                'content-type': 'application/x-www-form-urlencoded'
+                'content-type': 'application/x-www-form-urlencoded',
+                // Header tambahan agar terlihat lebih "real"
+                'Origin': 'https://www.ytbsaver.com',
+                'Referer': 'https://www.ytbsaver.com/'
               },
               body: new URLSearchParams({
                 url: targetUrl,
@@ -83,14 +75,12 @@ module.exports = {
         }
       }, url);
 
-      // Cek hasil dari website target
       if (result.errno !== 0) {
-        throw new Error('Gagal mengambil data. Pastikan URL valid atau coba lagi nanti.');
+        throw new Error('Gagal parsing data dari sumber.');
       }
 
       const v = result.data;
-
-      // Rapikan data respons
+      
       const data = {
         title: v.title,
         thumbnail: v.thumbnail,
@@ -99,14 +89,13 @@ module.exports = {
         links: {
           best_quality: {
             url: v.best_down_url,
-            type: 'video/mp4' // Asumsi
+            type: 'video/mp4'
           },
           video_variants: v.videos || {},
           audio_variants: v.audios || {}
         }
       };
 
-      // Kirim respons sukses ke user API
       return res.status(200).json({
         status: true,
         message: 'Berhasil mengambil data video',
@@ -114,14 +103,13 @@ module.exports = {
       });
 
     } catch (error) {
-      console.error('Scraping Error:', error.message);
+      console.error('Vercel Scrape Error:', error);
       return res.status(500).json({
         status: false,
         message: 'Internal Server Error',
         error: error.message
       });
     } finally {
-      // PENTING: Selalu tutup browser agar RAM server tidak habis
       if (browser) {
         await browser.close();
       }
