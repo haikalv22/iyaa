@@ -2,11 +2,11 @@ const path = require('path');
 const fs = require('fs');
 
 // --- KONFIGURASI PLUGIN ---
-exports.name = 'Gemini Chat';
+exports.name = 'Gemini Chat Tess';
 exports.desc = 'Chat dengan Google Gemini (Support Context/Nyambung)';
 exports.category = 'ai';
 exports.method = 'GET';
-exports.path = '/geminii';
+exports.path = '/geminiii';
 exports.params = [
     { name: 'query', required: true },
     { name: 'id', required: false } // ID bersifat opsional untuk chat pertama
@@ -17,7 +17,7 @@ exports.example = '/ai/gemini?query=Halo&id=';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
-// Helper untuk fetch (karena node-fetch v3 ESM only)
+// Helper untuk fetch
 let _fetch = globalThis.fetch;
 async function ensureFetch() {
     if (typeof _fetch === 'function') return _fetch;
@@ -50,18 +50,24 @@ function extractImageUrlsFromText(text) {
     return Array.from(out);
 }
 
+// Mendapatkan Cookie Baru
 async function getAnonCookie() {
     const f = await ensureFetch();
-    const r = await f('https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=maGuAc&source-path=%2F&hl=en-US&rt=c', {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8', 'user-agent': UA },
-        body: 'f.req=%5B%5B%5B%22maGuAc%22%2C%22%5B0%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&',
-    });
-    const setCookie = r.headers.get('set-cookie');
-    if (!setCookie) throw new Error('Gagal mendapatkan session cookie.');
-    return setCookie.split(';')[0];
+    try {
+        const r = await f('https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=maGuAc&source-path=%2F&hl=en-US&rt=c', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8', 'user-agent': UA },
+            body: 'f.req=%5B%5B%5B%22maGuAc%22%2C%22%5B0%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&',
+        });
+        const setCookie = r.headers.get('set-cookie');
+        if (!setCookie) throw new Error('Gagal mendapatkan session cookie.');
+        return setCookie.split(';')[0];
+    } catch (e) {
+        throw new Error('Gagal fetch cookie: ' + e.message);
+    }
 }
 
+// Mendapatkan Token XSRF (Wajib agar tidak 403)
 async function getXsrfToken(cookieHeader) {
     try {
         const f = await ensureFetch();
@@ -86,37 +92,31 @@ function parseStream(data) {
     for (const c of chunks) {
         try {
             const outer = JSON.parse(c);
-            // Mencari payload JSON di dalam struktur array yang berantakan
             const payloadStr = outer?.[0]?.[2]; 
             if (typeof payloadStr !== 'string') continue;
             
             const parsed = JSON.parse(payloadStr);
             
-            // Ambil text jawaban (biasanya di index 4 atau 0 dari elemen tertentu)
-            // Struktur respon gemini sering berubah, kita coba ambil string terpanjang
+            // 1. Ambil Text Jawaban
             const candidates = [];
             const walk = (node) => {
                 if (typeof node === 'string' && node.length > 5 && !node.startsWith('http')) candidates.push(node);
                 if (Array.isArray(node)) node.forEach(walk);
             };
             walk(parsed);
-            
             candidates.sort((a, b) => b.length - a.length);
             if(candidates.length > 0) bestText = candidates[0];
 
-            // Ambil resumeArray (context history) - Kunci agar chat nyambung
+            // 2. Ambil History Context (Resume Array)
+            // Cek di parsed[1] (Posisi standard)
             if (Array.isArray(parsed?.[1])) {
                 resumeArray = parsed[1];
             }
         } catch (e) {}
     }
     
-    // Fallback parsing manual jika simple parse gagal (logika original yang disederhanakan)
-    if(!bestText) {
-        bestText = "Maaf, saya tidak bisa memproses jawaban saat ini.";
-    }
-
-    bestText = bestText.replace(/\*\*(.+?)\*\*/g, '*$1*').trim(); // Format bold
+    if(!bestText) bestText = "Maaf, saya tidak bisa memproses jawaban saat ini.";
+    bestText = bestText.replace(/\*\*(.+?)\*\*/g, '*$1*').trim(); 
     images = extractImageUrlsFromText(data);
 
     return { text: bestText, resumeArray, images };
@@ -126,20 +126,27 @@ async function askGemini(prompt, previousId = null) {
     const f = await ensureFetch();
     
     let resumeArray = null;
+    let activeCookie = null;
+
+    // --- FIX UTAMA: LOAD COOKIE LAMA ---
     if (previousId) {
         try {
-            // Decode ID base64 menjadi array history
             const j = JSON.parse(atob2(previousId));
-            resumeArray = j?.resumeArray || null;
+            resumeArray = j?.r || null; // 'r' singkatan resumeArray
+            activeCookie = j?.c || null; // 'c' singkatan cookie
         } catch (e) {
-            console.log("Invalid Previous ID, starting new chat.");
+            console.log("ID tidak valid, membuat sesi baru.");
         }
     }
 
-    const cookie = await getAnonCookie();
-    const xsrf = await getXsrfToken(cookie);
+    // Jika tidak ada cookie lama, buat baru
+    if (!activeCookie) {
+        activeCookie = await getAnonCookie();
+    }
+
+    const xsrf = await getXsrfToken(activeCookie);
     
-    const payload = [[prompt], ['en-US'], resumeArray]; // Masukkan resumeArray di sini
+    const payload = [[prompt], ['en-US'], resumeArray];
     const params = new URLSearchParams({
         'f.req': JSON.stringify([null, JSON.stringify(payload)]),
         at: xsrf || ''
@@ -150,7 +157,7 @@ async function askGemini(prompt, previousId = null) {
         headers: {
             'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
             'user-agent': UA,
-            'cookie': cookie,
+            'cookie': activeCookie, // GUNAKAN COOKIE KONSISTEN
         },
         body: params
     });
@@ -158,8 +165,15 @@ async function askGemini(prompt, previousId = null) {
     const data = await response.text();
     const parsed = parseStream(data);
     
-    // Encode kembali resumeArray menjadi ID baru
-    const newId = parsed.resumeArray ? btoa2(JSON.stringify({ resumeArray: parsed.resumeArray })) : null;
+    // --- FIX UTAMA: SIMPAN COOKIE KE ID ---
+    // Kita simpan cookie + resumeArray ke dalam ID agar bisa dipakai request berikutnya
+    let newId = null;
+    if (parsed.resumeArray) {
+        newId = btoa2(JSON.stringify({ 
+            r: parsed.resumeArray, 
+            c: activeCookie 
+        }));
+    }
     
     return { text: parsed.text, id: newId, images: parsed.images };
 }
@@ -183,7 +197,7 @@ exports.run = async (req, res) => {
             creator: "Rest API",
             result: {
                 reply: result.text,
-                conversation_id: result.id, // ID ini harus dikirim user di chat selanjutnya
+                conversation_id: result.id, // ID ini sekarang mengandung Context + Cookie
                 images: result.images
             }
         });
