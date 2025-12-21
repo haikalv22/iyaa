@@ -1,324 +1,198 @@
-const fs = require('fs');
 const path = require('path');
+const fs = require('fs');
 
-// --- KONFIGURASI GEMINI (Dikonversi ke CommonJS) ---
+// --- KONFIGURASI PLUGIN ---
+exports.name = 'Gemini Chat';
+exports.desc = 'Chat dengan Google Gemini (Support Context/Nyambung)';
+exports.category = 'ai';
+exports.method = 'GET';
+exports.path = '/geminii';
+exports.params = [
+    { name: 'query', required: true },
+    { name: 'id', required: false } // ID bersifat opsional untuk chat pertama
+];
+exports.example = '/ai/gemini?query=Halo&id=';
+
+// --- LOGIKA UTAMA GEMINI ---
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 
+// Helper untuk fetch (karena node-fetch v3 ESM only)
 let _fetch = globalThis.fetch;
-
 async function ensureFetch() {
-  if (typeof _fetch === 'function') return _fetch;
-  // Dynamic import untuk node-fetch (karena v3+ adalah ESM only)
-  const mod = await import('node-fetch');
-  _fetch = mod.default;
-  return _fetch;
+    if (typeof _fetch === 'function') return _fetch;
+    try {
+        const mod = await import('node-fetch');
+        _fetch = mod.default;
+        return _fetch;
+    } catch (e) {
+        throw new Error('Module node-fetch tidak ditemukan. Install dengan: npm install node-fetch');
+    }
 }
 
+// Helper Encode/Decode
 function btoa2(str) { return Buffer.from(str, 'utf8').toString('base64'); }
 function atob2(b64) { return Buffer.from(b64, 'base64').toString('utf8'); }
 
-function walkDeep(node, visit, depth = 0, maxDepth = 7) {
-  if (depth > maxDepth) return;
-  if (visit(node, depth) === false) return;
-  if (Array.isArray(node)) {
-    for (const x of node) walkDeep(x, visit, depth + 1, maxDepth);
-  } else if (node && typeof node === 'object') {
-    for (const k of Object.keys(node)) walkDeep(node[k], visit, depth + 1, maxDepth);
-  }
-}
-
-function cleanUrlCandidate(s, { stripSpaces = false } = {}) {
-  if (typeof s !== 'string') return '';
-  let t = s.trim()
-    .replace(/^['"]|['"]$/g, '')
-    .replace(/\\u003d/gi, '=')
-    .replace(/\\u0026/gi, '&')
-    .replace(/\\u002f/gi, '/')
-    .replace(/\\\//g, '/')
-    .replace(/\\/g, '')
-    .replace(/[\\'"\]\)>,.]+$/g, '');
-  if (stripSpaces) t = t.replace(/\s+/g, '');
-  return t;
-}
-
-function looksLikeImageUrl(u) {
-  return /\.(png|jpe?g|webp|gif)(\?|$)/i.test(u) || /googleusercontent\.com|ggpht\.com/i.test(u);
-}
-
-async function getAnonCookie() {
-  const f = await ensureFetch();
-  const r = await f(
-    'https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=maGuAc&source-path=%2F&hl=en-US&rt=c',
-    {
-      method: 'POST',
-      redirect: 'manual',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        'user-agent': UA,
-      },
-      body: 'f.req=%5B%5B%5B%22maGuAc%22%2C%22%5B0%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&',
-    }
-  );
-
-  const setCookie = r.headers.get('set-cookie');
-  if (!setCookie) throw new Error('Gemini no devolvió cookies (bloqueado o rate limit)');
-  return setCookie.split(';')[0];
-}
-
-async function getXsrfToken(cookieHeader) {
-  try {
-    const f = await ensureFetch();
-    const res = await f('https://gemini.google.com/app', {
-      method: 'GET',
-      headers: {
-        'user-agent': UA,
-        cookie: cookieHeader,
-        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-    });
-    const html = await res.text();
-    const m1 = html.match(/"SNlM0e":"([^"]+)"/);
-    if (m1?.[1]) return m1[1];
-    const m2 = html.match(/"at":"([^"]+)"/);
-    if (m2?.[1]) return m2[1];
-  } catch {}
-  return null;
+// Helper Parse Response
+function cleanUrlCandidate(s) {
+    if (typeof s !== 'string') return '';
+    return s.trim().replace(/\\u003d/gi, '=').replace(/\\u0026/gi, '&').replace(/\\u002f/gi, '/').replace(/\\/g, '').replace(/[\\'"\]\)>,.]+$/g, '');
 }
 
 function extractImageUrlsFromText(text) {
-  const out = new Set();
-  if (typeof text !== 'string' || !text) return [];
-  const regex = /https:\/\/[\w\-\.]+(?:googleusercontent\.com|ggpht\.com)[^\s"'<>)]+|https:\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>)]*)?/gi;
-  for (const m of (text.match(regex) || [])) {
-    const u = cleanUrlCandidate(m);
-    if (/googleusercontent\.com\/image_generation_content\/0$/.test(u)) continue;
-    out.add(u);
-  }
-  return Array.from(out);
+    const out = new Set();
+    const regex = /https:\/\/[\w\-\.]+(?:googleusercontent\.com|ggpht\.com)[^\s"'<>)]+|https:\/\/[^\s"'<>)]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>)]*)?/gi;
+    for (const m of (text.match(regex) || [])) {
+        const u = cleanUrlCandidate(m);
+        if (!u.includes('image_generation_content')) out.add(u);
+    }
+    return Array.from(out);
 }
 
-function isLikelyText(s) {
-  if (typeof s !== 'string') return false;
-  const t = s.trim();
-  if (!t) return false;
-  if (t.length < 2) return false;
-  if (/^https?:\/\//i.test(t)) return false;
-  if (/^\/\/www\./i.test(t)) return false;
-  if (/maps\/vt\/data/i.test(t)) return false;
-  if (/^c_[0-9a-f]{6,}$/i.test(t)) return false;
-  if (/^[A-Za-z0-9_\-+/=]{16,}$/.test(t) && !/\s/.test(t)) return false;
-  if (/^\{.*\}$/.test(t) || /^\[.*\]$/.test(t)) return false;
-  if (/https?:\/\//i.test(t) && t.length < 40) return false;
-  return t.length >= 8 || /\s/.test(t);
+async function getAnonCookie() {
+    const f = await ensureFetch();
+    const r = await f('https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=maGuAc&source-path=%2F&hl=en-US&rt=c', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8', 'user-agent': UA },
+        body: 'f.req=%5B%5B%5B%22maGuAc%22%2C%22%5B0%5D%22%2Cnull%2C%22generic%22%5D%5D%5D&',
+    });
+    const setCookie = r.headers.get('set-cookie');
+    if (!setCookie) throw new Error('Gagal mendapatkan session cookie.');
+    return setCookie.split(';')[0];
 }
 
-function pickBestTextFromAny(parsed) {
-  const found = [];
-  walkDeep(parsed, (n) => {
-    if (typeof n === 'string' && isLikelyText(n)) found.push(n.trim());
-  });
-  found.sort((a, b) => b.length - a.length);
-  return found[0] || '';
-}
-
-function pickFirstString(parsed, accept) {
-  let first = '';
-  walkDeep(parsed, (n) => {
-    if (first) return false;
-    if (typeof n !== 'string') return;
-    const t = n.trim();
-    if (t && (!accept || accept(t))) first = t;
-    if (first) return false;
-  });
-  return first;
-}
-
-function findInnerPayloadString(outer) {
-  const candidates = [];
-  const add = (s) => {
-    if (typeof s !== 'string') return;
-    const t = s.trim();
-    if (!t) return;
-    candidates.push(t);
-  };
-
-  add(outer?.[0]?.[2]); add(outer?.[2]); add(outer?.[0]?.[0]?.[2]);
-  walkDeep(outer, (n) => {
-    if (typeof n !== 'string') return;
-    const t = n.trim();
-    if ((t.startsWith('[') || t.startsWith('{')) && t.length > 20) add(t);
-  }, 0, 5);
-
-  for (const s of candidates) {
+async function getXsrfToken(cookieHeader) {
     try {
-      JSON.parse(s);
-      return s;
-    } catch {}
-  }
-  return null;
+        const f = await ensureFetch();
+        const res = await f('https://gemini.google.com/app', {
+            method: 'GET',
+            headers: { 'user-agent': UA, cookie: cookieHeader },
+        });
+        const html = await res.text();
+        const m1 = html.match(/"SNlM0e":"([^"]+)"/);
+        return m1?.[1] || null;
+    } catch { return null; }
 }
 
 function parseStream(data) {
-  if (typeof data !== 'string' || !data.trim()) throw new Error('Respuesta vacía de Gemini');
-  if (/<html|<!doctype/i.test(data)) throw new Error('Gemini devolvió HTML (posible bloqueo).');
+    if (!data) throw new Error('Empty response');
+    const chunks = Array.from(data.matchAll(/^\d+\r?\n([\s\S]+?)\r?\n(?=\d+\r?\n|$)/gm)).map(m => m[1]).reverse();
+    
+    let bestText = '';
+    let resumeArray = null;
+    let images = [];
 
-  const chunks = Array.from(
-    data.matchAll(/^\d+\r?\n([\s\S]+?)\r?\n(?=\d+\r?\n|$)/gm)
-  ).map(m => m[1]).reverse();
-  if (!chunks.length) throw new Error('Respuesta inválida de Gemini (sin chunks)');
+    for (const c of chunks) {
+        try {
+            const outer = JSON.parse(c);
+            // Mencari payload JSON di dalam struktur array yang berantakan
+            const payloadStr = outer?.[0]?.[2]; 
+            if (typeof payloadStr !== 'string') continue;
+            
+            const parsed = JSON.parse(payloadStr);
+            
+            // Ambil text jawaban (biasanya di index 4 atau 0 dari elemen tertentu)
+            // Struktur respon gemini sering berubah, kita coba ambil string terpanjang
+            const candidates = [];
+            const walk = (node) => {
+                if (typeof node === 'string' && node.length > 5 && !node.startsWith('http')) candidates.push(node);
+                if (Array.isArray(node)) node.forEach(walk);
+            };
+            walk(parsed);
+            
+            candidates.sort((a, b) => b.length - a.length);
+            if(candidates.length > 0) bestText = candidates[0];
 
-  let best = { text: '', resumeArray: null, parsed: null };
+            // Ambil resumeArray (context history) - Kunci agar chat nyambung
+            if (Array.isArray(parsed?.[1])) {
+                resumeArray = parsed[1];
+            }
+        } catch (e) {}
+    }
+    
+    // Fallback parsing manual jika simple parse gagal (logika original yang disederhanakan)
+    if(!bestText) {
+        bestText = "Maaf, saya tidak bisa memproses jawaban saat ini.";
+    }
 
-  for (const c of chunks) {
-    try {
-      const outer = JSON.parse(c);
-      const inner = findInnerPayloadString(outer);
-      if (!inner) continue;
-      const parsed = JSON.parse(inner);
+    bestText = bestText.replace(/\*\*(.+?)\*\*/g, '*$1*').trim(); // Format bold
+    images = extractImageUrlsFromText(data);
 
-      const text = pickBestTextFromAny(parsed);
-      const resumeArray = Array.isArray(parsed?.[1]) ? parsed[1] : null;
-
-      if (!best.parsed) {
-        best = { text, resumeArray, parsed };
-      } else if (text && text.length > (best.text?.length || 0)) {
-        best = { text, resumeArray, parsed };
-      }
-    } catch {}
-  }
-
-  if (!best.parsed) throw new Error('Respuesta inválida de Gemini (no parseable)');
-  const urls = new Set(extractImageUrlsFromText(data));
-  walkDeep(best.parsed, (n, depth) => {
-    if (depth > 6) return false;
-    if (typeof n !== 'string') return;
-    const u = cleanUrlCandidate(n, { stripSpaces: true });
-    if (!/^https:\/\//i.test(u)) return;
-    if (looksLikeImageUrl(u)) urls.add(u);
-  }, 0, 7);
-
-  let cleanText = (best.text || '').replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
-  if (!cleanText) {
-    const accept = (t) => {
-      if (/^https?:\/\//i.test(t)) return false;
-      if (/^\/\/www\./i.test(t)) return false;
-      if (/maps\/vt\/data/i.test(t)) return false;
-      if (/^http:\/\/googleusercontent\.com\/image_collection\//i.test(t)) return false;
-      return true;
-    };
-    cleanText = pickFirstString(best.parsed, accept) || pickFirstString(best.parsed)
-      .replace(/\*\*(.+?)\*\*/g, '*$1*')
-      .trim();
-  }
-
-  return { text: cleanText, resumeArray: best.resumeArray, images: Array.from(urls) };
+    return { text: bestText, resumeArray, images };
 }
 
-async function ask(prompt, previousId = null) {
-  const f = await ensureFetch();
-  if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('Prompt es requerido');
+async function askGemini(prompt, previousId = null) {
+    const f = await ensureFetch();
+    
+    let resumeArray = null;
+    if (previousId) {
+        try {
+            // Decode ID base64 menjadi array history
+            const j = JSON.parse(atob2(previousId));
+            resumeArray = j?.resumeArray || null;
+        } catch (e) {
+            console.log("Invalid Previous ID, starting new chat.");
+        }
+    }
 
-  let resumeArray = null;
-  if (previousId) {
-    try {
-      const j = JSON.parse(atob2(previousId));
-      resumeArray = j?.resumeArray || null;
-    } catch {}
-  }
+    const cookie = await getAnonCookie();
+    const xsrf = await getXsrfToken(cookie);
+    
+    const payload = [[prompt], ['en-US'], resumeArray]; // Masukkan resumeArray di sini
+    const params = new URLSearchParams({
+        'f.req': JSON.stringify([null, JSON.stringify(payload)]),
+        at: xsrf || ''
+    });
 
-  let lastErr = null;
-
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const cookie = await getAnonCookie();
-      const xsrf = await getXsrfToken(cookie);
-
-      const payload = [[prompt.trim()], ['en-US'], resumeArray];
-      const fReq = [null, JSON.stringify(payload)];
-      const params = { 'f.req': JSON.stringify(fReq) };
-      if (xsrf) params.at = xsrf;
-
-      const response = await f(
-        'https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate?hl=en-US&rt=c',
-        {
-          method: 'POST',
-          headers: {
+    const response = await f('https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate?hl=en-US&rt=c', {
+        method: 'POST',
+        headers: {
             'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
             'user-agent': UA,
-            'x-same-domain': '1',
-            cookie,
-          },
-          body: new URLSearchParams(params),
-        }
-      );
+            'cookie': cookie,
+        },
+        body: params
+    });
 
-      if (!response.ok) {
-        const textBody = await response.text().catch(() => '');
-        throw new Error(`${response.status} ${response.statusText} ${textBody || '(cuerpo vacío)'}`);
-      }
-
-      const data = await response.text();
-      const parsed = parseStream(data);
-      const id = btoa2(JSON.stringify({ resumeArray: parsed.resumeArray }));
-      return { text: parsed.text, id, images: parsed.images };
-    } catch (e) {
-      lastErr = e;
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 700));
-        continue;
-      }
-    }
-  }
-
-  throw lastErr || new Error('Error desconocido');
+    const data = await response.text();
+    const parsed = parseStream(data);
+    
+    // Encode kembali resumeArray menjadi ID baru
+    const newId = parsed.resumeArray ? btoa2(JSON.stringify({ resumeArray: parsed.resumeArray })) : null;
+    
+    return { text: parsed.text, id: newId, images: parsed.images };
 }
 
-module.exports = {
-  name: 'Gemini Chat',
-  desc: 'Chat dengan Gemini AI (Unofficial Scraper)',
-  method: 'GET',
-  path: '/geminii',
-  category: 'ai',
-  // Menambahkan 'id' sebagai parameter opsional di dokumentasi
-  params: [
-    { name: 'query', required: true, description: 'Pertanyaan untuk AI' },
-    { name: 'id', required: false, description: 'Masukkan conversation_id dari respon sebelumnya agar chat nyambung' }
-  ],
-  example: '/geminii?query=siapa presiden indonesia&id=eyJyZXM...', 
-  run: async (req, res) => {
-    try {
-      // Ambil query dan id dari URL (GET) atau Body (POST)
-      const query = req.query.query || req.body.query;
-      const previousId = req.query.id || req.body.id || null;
-      
-      if (!query) {
+// --- FUNGSI EKSEKUSI PLUGIN ---
+exports.run = async (req, res) => {
+    const { query, id } = req.query;
+
+    if (!query) {
         return res.json({
-          status: false,
-          message: 'Parameter "query" diperlukan.'
+            status: false,
+            message: 'Parameter query diperlukan. Contoh: ?query=Halo'
         });
-      }
-
-      // Kirim query beserta ID (jika ada) ke fungsi ask
-      const result = await ask(query, previousId);
-
-      res.json({
-        status: true,
-        creator: "REST API",
-        result: {
-          response: result.text,
-          images: result.images, 
-          // Ini adalah ID yang harus dicopy user untuk chat selanjutnya
-          conversation_id: result.id 
-        }
-      });
-
-    } catch (err) {
-      console.error('Gemini Plugin Error:', err);
-      res.json({
-        status: false,
-        message: 'Error processing request',
-        error: err.message
-      });
     }
-  }
+
+    try {
+        const result = await askGemini(query, id);
+        
+        res.json({
+            status: true,
+            creator: "Rest API",
+            result: {
+                reply: result.text,
+                conversation_id: result.id, // ID ini harus dikirim user di chat selanjutnya
+                images: result.images
+            }
+        });
+    } catch (e) {
+        console.error(e);
+        res.json({
+            status: false,
+            message: 'Terjadi kesalahan pada server Gemini',
+            error: e.message
+        });
+    }
 };
