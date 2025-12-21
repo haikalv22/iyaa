@@ -2,22 +2,22 @@ const path = require('path');
 const fs = require('fs');
 
 // --- KONFIGURASI PLUGIN ---
-exports.name = 'Gemini Chat Tess';
+exports.name = 'tess';
 exports.desc = 'Chat dengan Google Gemini (Support Context/Nyambung)';
 exports.category = 'ai';
 exports.method = 'GET';
-exports.path = '/geminiii';
+exports.path = '/geminiii'; // Sesuaikan path jika mau
 exports.params = [
     { name: 'query', required: true },
-    { name: 'id', required: false } // ID bersifat opsional untuk chat pertama
+    { name: 'id', required: false } 
 ];
-exports.example = '/ai/gemini?query=Halo&id=';
+exports.example = '/ai/geminiii?query=Halo&id=';
 
 // --- LOGIKA UTAMA GEMINI ---
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
+// User Agent yang lebih baru biar tidak dianggap bot jadul
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-// Helper untuk fetch
 let _fetch = globalThis.fetch;
 async function ensureFetch() {
     if (typeof _fetch === 'function') return _fetch;
@@ -26,15 +26,13 @@ async function ensureFetch() {
         _fetch = mod.default;
         return _fetch;
     } catch (e) {
-        throw new Error('Module node-fetch tidak ditemukan. Install dengan: npm install node-fetch');
+        throw new Error('Module node-fetch tidak ditemukan.');
     }
 }
 
-// Helper Encode/Decode
 function btoa2(str) { return Buffer.from(str, 'utf8').toString('base64'); }
 function atob2(b64) { return Buffer.from(b64, 'base64').toString('utf8'); }
 
-// Helper Parse Response
 function cleanUrlCandidate(s) {
     if (typeof s !== 'string') return '';
     return s.trim().replace(/\\u003d/gi, '=').replace(/\\u0026/gi, '&').replace(/\\u002f/gi, '/').replace(/\\/g, '').replace(/[\\'"\]\)>,.]+$/g, '');
@@ -50,7 +48,7 @@ function extractImageUrlsFromText(text) {
     return Array.from(out);
 }
 
-// Mendapatkan Cookie Baru
+// 1. Dapatkan Cookie Baru
 async function getAnonCookie() {
     const f = await ensureFetch();
     try {
@@ -67,7 +65,7 @@ async function getAnonCookie() {
     }
 }
 
-// Mendapatkan Token XSRF (Wajib agar tidak 403)
+// 2. Dapatkan SNlM0e (Token XSRF) menggunakan Cookie yang spesifik
 async function getXsrfToken(cookieHeader) {
     try {
         const f = await ensureFetch();
@@ -81,6 +79,7 @@ async function getXsrfToken(cookieHeader) {
     } catch { return null; }
 }
 
+// 3. Parser Response (Lebih teliti mencari Conversation ID)
 function parseStream(data) {
     if (!data) throw new Error('Empty response');
     const chunks = Array.from(data.matchAll(/^\d+\r?\n([\s\S]+?)\r?\n(?=\d+\r?\n|$)/gm)).map(m => m[1]).reverse();
@@ -97,7 +96,7 @@ function parseStream(data) {
             
             const parsed = JSON.parse(payloadStr);
             
-            // 1. Ambil Text Jawaban
+            // A. Cari Text
             const candidates = [];
             const walk = (node) => {
                 if (typeof node === 'string' && node.length > 5 && !node.startsWith('http')) candidates.push(node);
@@ -107,16 +106,26 @@ function parseStream(data) {
             candidates.sort((a, b) => b.length - a.length);
             if(candidates.length > 0) bestText = candidates[0];
 
-            // 2. Ambil History Context (Resume Array)
-            // Cek di parsed[1] (Posisi standard)
-            if (Array.isArray(parsed?.[1])) {
-                resumeArray = parsed[1];
+            // B. Cari Conversation Context (resumeArray)
+            // Biasanya ada di index 1: [content, [c_id, r_id, rc_id], ...]
+            if (Array.isArray(parsed) && parsed.length > 1 && Array.isArray(parsed[1])) {
+                // Pastikan array ini berisi string ID (c_...)
+                const candidateArray = parsed[1];
+                if (candidateArray.length >= 2 && typeof candidateArray[0] === 'string' && candidateArray[0].startsWith('c_')) {
+                    resumeArray = candidateArray;
+                }
             }
         } catch (e) {}
     }
     
     if(!bestText) bestText = "Maaf, saya tidak bisa memproses jawaban saat ini.";
-    bestText = bestText.replace(/\*\*(.+?)\*\*/g, '*$1*').trim(); 
+    
+    // Bersihkan formatting aneh dari Gemini
+    bestText = bestText
+        .replace(/\*\*(.+?)\*\*/g, '*$1*') // Bold
+        .replace(/\[Image of.*?\]/g, '') // Hapus placeholder image
+        .trim();
+        
     images = extractImageUrlsFromText(data);
 
     return { text: bestText, resumeArray, images };
@@ -128,25 +137,40 @@ async function askGemini(prompt, previousId = null) {
     let resumeArray = null;
     let activeCookie = null;
 
-    // --- FIX UTAMA: LOAD COOKIE LAMA ---
+    // --- DECODE CONTEXT ---
     if (previousId) {
         try {
             const j = JSON.parse(atob2(previousId));
-            resumeArray = j?.r || null; // 'r' singkatan resumeArray
-            activeCookie = j?.c || null; // 'c' singkatan cookie
+            resumeArray = j?.r || null; 
+            activeCookie = j?.c || null; 
+            
+            // Validasi format resumeArray harus benar
+            if (!Array.isArray(resumeArray) || resumeArray.length < 2) {
+                resumeArray = null; // Reset jika korup
+            }
         } catch (e) {
             console.log("ID tidak valid, membuat sesi baru.");
         }
     }
 
-    // Jika tidak ada cookie lama, buat baru
+    // Jika Cookie hilang, buat baru
     if (!activeCookie) {
         activeCookie = await getAnonCookie();
     }
 
+    // Fetch Token XSRF baru menggunakan Cookie yang SAMA
     const xsrf = await getXsrfToken(activeCookie);
+    if (!xsrf) {
+        // Jika gagal dapat token pakai cookie lama, berarti cookie expired.
+        // Terpaksa buat cookie baru (Context hilang, tapi bot tetap jalan)
+        activeCookie = await getAnonCookie();
+        // Coba ambil token lagi
+    }
+
+    // --- PAYLOAD REVISED ---
+    // Menggunakan 'null' bukan 'en-US' kadang lebih stabil untuk context lanjutan
+    const payload = [[prompt], null, resumeArray]; 
     
-    const payload = [[prompt], ['en-US'], resumeArray];
     const params = new URLSearchParams({
         'f.req': JSON.stringify([null, JSON.stringify(payload)]),
         at: xsrf || ''
@@ -157,20 +181,29 @@ async function askGemini(prompt, previousId = null) {
         headers: {
             'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
             'user-agent': UA,
-            'cookie': activeCookie, // GUNAKAN COOKIE KONSISTEN
+            'cookie': activeCookie, 
+            'origin': 'https://gemini.google.com',
+            'referer': 'https://gemini.google.com/'
         },
         body: params
     });
 
+    if (!response.ok) {
+        throw new Error(`Gemini Error: ${response.status} ${response.statusText}`);
+    }
+
     const data = await response.text();
     const parsed = parseStream(data);
     
-    // --- FIX UTAMA: SIMPAN COOKIE KE ID ---
-    // Kita simpan cookie + resumeArray ke dalam ID agar bisa dipakai request berikutnya
+    // Simpan context baru
+    // Jika Gemini tidak mengembalikan context baru, kita GUNAKAN context lama + update r_id jika mungkin (tapi sulit)
+    // Jadi kita prioritaskan context dari response baru.
+    let finalResume = parsed.resumeArray || resumeArray; 
+    
     let newId = null;
-    if (parsed.resumeArray) {
+    if (finalResume) {
         newId = btoa2(JSON.stringify({ 
-            r: parsed.resumeArray, 
+            r: finalResume, 
             c: activeCookie 
         }));
     }
@@ -178,14 +211,13 @@ async function askGemini(prompt, previousId = null) {
     return { text: parsed.text, id: newId, images: parsed.images };
 }
 
-// --- FUNGSI EKSEKUSI PLUGIN ---
 exports.run = async (req, res) => {
     const { query, id } = req.query;
 
     if (!query) {
         return res.json({
             status: false,
-            message: 'Parameter query diperlukan. Contoh: ?query=Halo'
+            message: 'Parameter query diperlukan.'
         });
     }
 
@@ -197,7 +229,7 @@ exports.run = async (req, res) => {
             creator: "Rest API",
             result: {
                 reply: result.text,
-                conversation_id: result.id, // ID ini sekarang mengandung Context + Cookie
+                conversation_id: result.id, 
                 images: result.images
             }
         });
