@@ -279,7 +279,7 @@ module.exports = {
   name: 'Gemini Chat',
   desc: 'Chat dengan Gemini AI (Unofficial Scraper)',
   method: 'GET', // Bisa 'get' atau 'post' tergantung preferensi
-  path: '/gemini',
+  path: '/geminii',
   category: 'ai',
   params: [
     { name: 'query', required: true }
