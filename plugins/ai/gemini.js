@@ -273,42 +273,42 @@ async function ask(prompt, previousId = null) {
   throw lastErr || new Error('Error desconocido');
 }
 
-// --- IMPLEMENTASI PLUGIN SERVER.JS ---
-
 module.exports = {
   name: 'Gemini Chat',
   desc: 'Chat dengan Gemini AI (Unofficial Scraper)',
-  method: 'GET', // Bisa 'get' atau 'post' tergantung preferensi
+  method: 'GET',
   path: '/geminii',
   category: 'ai',
+  // Menambahkan 'id' sebagai parameter opsional di dokumentasi
   params: [
-    { name: 'query', required: true }
+    { name: 'query', required: true, description: 'Pertanyaan untuk AI' },
+    { name: 'id', required: false, description: 'Masukkan conversation_id dari respon sebelumnya agar chat nyambung' }
   ],
-  example: '/ai/gemini?query=siapa presiden indonesia',
+  example: '/geminii?query=siapa presiden indonesia&id=eyJyZXM...', 
   run: async (req, res) => {
     try {
+      // Ambil query dan id dari URL (GET) atau Body (POST)
       const query = req.query.query || req.body.query;
+      const previousId = req.query.id || req.body.id || null;
       
       if (!query) {
         return res.json({
           status: false,
-          message: 'Parameter query diperlukan'
+          message: 'Parameter "query" diperlukan.'
         });
       }
 
-      // Opsional: Support conversation ID untuk chat lanjutan
-      // Anda bisa mengirim parameter &id=... jika ingin melanjutkan chat
-      const previousId = req.query.id || req.body.id || null;
-
+      // Kirim query beserta ID (jika ada) ke fungsi ask
       const result = await ask(query, previousId);
 
       res.json({
         status: true,
-        creator: "REST API", // Sesuaikan nama creator
+        creator: "REST API",
         result: {
           response: result.text,
-          images: result.images, // Array URL gambar jika ada
-          conversation_id: result.id // ID untuk melanjutkan percakapan
+          images: result.images, 
+          // Ini adalah ID yang harus dicopy user untuk chat selanjutnya
+          conversation_id: result.id 
         }
       });
 
