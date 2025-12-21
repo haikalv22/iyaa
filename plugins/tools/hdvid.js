@@ -88,15 +88,15 @@ async function upscaleVideo(videoPath) {
 }
 
 module.exports = {
-    name: "AI Video Upscaler",
-    desc: "Meningkatkan kualitas video menjadi HD/2K",
-    category: "AI",
+    name: "hd video",
+    desc: "meningkatkan kualitas video menjadi HD/2K",
+    category: "tools",
     method: "GET",
-    path: "/unblur-video",
+    path: "/hdvid",
     params: ["url"],
     run: async (req, res) => {
         const { url } = req.query;
-        if (!url) return res.status(400).json({ status: false, message: "Parameter 'url' diperlukan." });
+        if (!url) return res.status(400).json({ status: false, message: "parameter 'url' diperlukan." });
 
         // --- PERBAIKAN DI SINI ---
         // Menggunakan os.tmpdir() yang aman untuk Serverless/Vercel/Local
@@ -118,7 +118,8 @@ module.exports = {
 
             res.json({
                 status: true,
-                message: "Success",
+                creator: "haikal",
+                message: "success",
                 result: { original: url, hd: resultUrl }
             });
 
