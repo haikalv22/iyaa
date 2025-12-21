@@ -34,8 +34,8 @@ async function cliptoAudio(youtubeUrl) {
       .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
 
     if (!audio) {
-      console.log(`[Clipto Debug] Available Medias:`, JSON.stringify(medias)); // Log apa yang tersedia
-      throw new Error('Tidak ditemukan format audio (mp3/m4a) pada link ini.');
+      console.log(`[clipto debug] available medias:`, JSON.stringify(medias)); // Log apa yang tersedia
+      throw new Error('tidak ditemukan format audio (mp3/m4a) pada link ini.');
     }
 
     return {
@@ -58,11 +58,11 @@ async function cliptoAudio(youtubeUrl) {
 }
 
 module.exports = {
-  name: "Clipto YouTube Audio",
-  desc: "Download audio YouTube menggunakan layanan Clipto",
+  name: "download audio youtube",
+  desc: "mendownload audio dari youtube ",
   category: "downloader",
   method: "GET",
-  path: "/yt-audio-clipto",
+  path: "/ytmp3",
   params: ['url'],
   
   run: async (req, res) => {
@@ -71,7 +71,7 @@ module.exports = {
     if (!url) {
       return res.status(400).json({
         status: false,
-        message: "Parameter 'url' diperlukan."
+        message: "parameter 'url' diperlukan."
       });
     }
 
@@ -79,12 +79,13 @@ module.exports = {
       const result = await cliptoAudio(url);
       res.json({
         status: true,
-        message: "Berhasil mengambil data audio",
+        creator: "haikal",
+        message: "berhasil mengambil data audio",
         result: result
       });
 
     } catch (error) {
-      console.error('[Plugin Error]', error); // Agar muncul di log Vercel
+      console.error('[plugin error]', error); // Agar muncul di log Vercel
       res.status(500).json({
         status: false,
         message: error.message
