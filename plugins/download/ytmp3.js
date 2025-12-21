@@ -1,73 +1,82 @@
 const axios = require('axios');
 
-// --- Fungsi Helper (Logic Asli) ---
 async function cliptoAudio(youtubeUrl) {
-  const res = await axios.post(
-    'https://www.clipto.com/api/youtube',
-    { url: youtubeUrl },
-    {
-      headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'Content-Type': 'application/json'
+  try {
+    const res = await axios.post(
+      'https://www.clipto.com/api/youtube',
+      { url: youtubeUrl },
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', // Penyamaran Browser
+          'Referer': 'https://www.clipto.com/',
+          'Origin': 'https://www.clipto.com',
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000 // Timeout 10 detik
       }
+    );
+
+    // --- DEBUGGING LOG (Cek ini di Vercel Logs jika error lagi) ---
+    console.log(`[Clipto Debug] URL: ${youtubeUrl}`);
+    console.log(`[Clipto Debug] Respon Status: ${res.data.success}`);
+    
+    if (!res.data || !res.data.medias) {
+      console.log(`[Clipto Debug] Raw Data:`, JSON.stringify(res.data)); // Log respon aneh
+      throw new Error('Clipto tidak memberikan data media. Kemungkinan IP Server diblokir.');
     }
-  );
 
-  if (!res.data || res.data.success !== true) {
-    throw new Error('Respon tidak valid dari Clipto API');
+    const medias = res.data.medias || [];
+
+    // Filter audio, tapi kita buat lebih longgar
+    const audio = medias
+      .filter(m => m.type === 'audio')
+      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+
+    if (!audio) {
+      console.log(`[Clipto Debug] Available Medias:`, JSON.stringify(medias)); // Log apa yang tersedia
+      throw new Error('Tidak ditemukan format audio (mp3/m4a) pada link ini.');
+    }
+
+    return {
+      title: res.data.title,
+      duration: res.data.duration,
+      format: audio.ext,
+      bitrate: audio.bitrate,
+      size: audio.size,
+      url: audio.url,
+      thumbnail: res.data.thumbnail
+    };
+
+  } catch (err) {
+    // Tangkap error axios secara spesifik
+    if (err.response) {
+       throw new Error(`HTTP Error: ${err.response.status} - ${err.response.statusText}`);
+    }
+    throw err;
   }
-
-  const medias = res.data.medias || [];
-
-  // Filter audio m4a/mp3/opus dan urutkan berdasarkan bitrate tertinggi
-  const audio = medias
-    .filter(m =>
-      m.type === 'audio' &&
-      ['m4a', 'mp3', 'opus'].includes(m.ext)
-    )
-    .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
-
-  if (!audio) {
-    throw new Error('Tidak ditemukan audio yang valid');
-  }
-
-  return {
-    title: res.data.title,
-    duration: res.data.duration, // Menambahkan durasi jika tersedia
-    format: audio.ext,
-    bitrate: audio.bitrate,
-    size: audio.size, // Menambahkan ukuran file jika tersedia
-    url: audio.url,
-    thumbnail: res.data.thumbnail // Menambahkan thumbnail
-  };
 }
 
-// --- Struktur Plugin untuk Server.js ---
 module.exports = {
   name: "Clipto YouTube Audio",
   desc: "Download audio YouTube menggunakan layanan Clipto",
-  category: "Downloader",
+  category: "downloader",
   method: "GET",
   path: "/yt-audio-clipto",
-  params: ['url'], // Parameter yang dibutuhkan agar muncul di dokumentasi
+  params: ['url'],
   
-  // Fungsi utama yang dijalankan server
   run: async (req, res) => {
-    // Ambil parameter url dari query string (karena method GET)
     const { url } = req.query;
 
     if (!url) {
       return res.status(400).json({
         status: false,
-        message: "Parameter 'url' diperlukan. Contoh: ?url=https://youtu.be/..."
+        message: "Parameter 'url' diperlukan."
       });
     }
 
     try {
-      // Panggil fungsi helper
       const result = await cliptoAudio(url);
-
-      // Kirim respon sukses
       res.json({
         status: true,
         message: "Berhasil mengambil data audio",
@@ -75,7 +84,7 @@ module.exports = {
       });
 
     } catch (error) {
-      // Kirim respon error
+      console.error('[Plugin Error]', error); // Agar muncul di log Vercel
       res.status(500).json({
         status: false,
         message: error.message
