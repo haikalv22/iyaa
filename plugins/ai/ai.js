@@ -58,7 +58,7 @@ module.exports = {
   name: 'gemini ai',
   desc: 'tanya jawab dengan ai gemini (support text & image url)',
   category: 'ai',
-  method: 'get',
+  method: 'GET',
   path: '/gemini',
   
   // Konfigurasi Parameter (Sesuai Solusi 2)
