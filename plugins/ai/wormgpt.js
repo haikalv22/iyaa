@@ -6,8 +6,8 @@ const AUTHORIZATION = "sk_live_0003c489-6095-453d-b3f5-dd87237aa69eb001";
 
 module.exports = {
   // Metadata untuk server.js
-  name: 'WormGPT',
-  desc: 'Chat dengan AI WormGPT (Uncensored/Jailbreak Model)',
+  name: 'worm gpt',
+  desc: 'chat dengan ai worm gpt (uncensored/jailbreak model)',
   method: 'GET', // Kita gunakan GET agar mudah dites di browser
   path: '/wormgpt', // Endpoint akan menjadi /ai/wormgpt (karena kategori 'AI')
   category: 'ai',
@@ -26,7 +26,7 @@ module.exports = {
       if (!text) {
         return res.status(400).json({
           status: false,
-          message: "Parameter 'text' tidak boleh kosong. Contoh: ?text=siapa kamu"
+          message: "parameter 'text' tidak boleh kosong. contoh: ?text=siapa kamu"
         });
       }
 
@@ -56,7 +56,7 @@ module.exports = {
       // 5. Kirim respons JSON ke user
       res.status(200).json({
         status: true,
-        creator: "API Server",
+        creator: "haikal",
         result: reply
       });
 
@@ -66,7 +66,7 @@ module.exports = {
       
       res.status(500).json({
         status: false,
-        message: "Gagal menghubungi layanan WormGPT.",
+        message: "gagal menghubungi layanan worm gpt.",
         error: error.message
       });
     }
