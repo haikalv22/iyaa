@@ -15,7 +15,7 @@ async function downloadYoutubeShort(videoUrl) {
     if (!cfResponse.success || !cfResponse.result) {
       return {
         success: false,
-        message: 'Gagal mendapatkan token captcha (CF Bypass Error)'
+        message: 'gagal mendapatkan token captcha (cf bypass error)'
       };
     }
     
@@ -25,7 +25,7 @@ async function downloadYoutubeShort(videoUrl) {
     const convertApiUrl = 'https://ds1.ezsrv.net/api/convert';
     const convertPayload = {
       url: videoUrl,
-      quality: '320', // Default quality
+      quality: '128', // Default quality
       trim: false,
       startT: 0,
       endT: 0,
@@ -41,7 +41,7 @@ async function downloadYoutubeShort(videoUrl) {
     if (convertResponse.status !== 'done') {
       return {
         success: false,
-        message: `Konversi gagal. Status: ${convertResponse.status}`
+        message: `konversi gagal. status: ${convertResponse.status}`
       };
     }
     
@@ -66,10 +66,10 @@ async function downloadYoutubeShort(videoUrl) {
 
 // --- Integrasi ke Server.js (Format Plugin) ---
 module.exports = {
-  name: 'YouTube Short Downloader',
-  desc: 'Download video YouTube Short tanpa watermark via EZConv',
+  name: 'ytmp3',
+  desc: 'download audio dari youtube',
   method: 'GET',            // Menggunakan method GET agar mudah dites di browser
-  path: '/ytshort',         // Endpoint akan menjadi /downloader/ytshort
+  path: '/ytmp3',         // Endpoint akan menjadi /downloader/ytshort
   category: 'downloader',
   params: ['url'],          // Parameter yang dibutuhkan di query ?url=...
   
@@ -81,7 +81,7 @@ module.exports = {
     if (!url) {
       return res.json({
         status: false,
-        message: 'Masukkan parameter url! Contoh: ?url=https://www.youtube.com/shorts/...'
+        message: 'masukkan parameter url contoh: ?url=https://www.youtube.com/shorts/...'
       });
     }
 
