@@ -13,6 +13,7 @@
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "morgan": "^1.10.0",
+    "image-size": "^1.1.1",
     "express-rate-limit": "^7.4.0",
     "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12",

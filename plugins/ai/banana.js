@@ -1,23 +1,52 @@
 const axios = require("axios");
+const sizeOf = require("image-size"); // Library wajib diinstall
 
-// User Agent tetap sama
+// User Agent
 const UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36";
 
-// --- FUNGSI HELPER (Ditaruh di luar module.exports agar rapi) ---
+// Daftar ukuran yang didukung
+const VALID_SHAPES = [
+    "1:1", "16:9", "9:16", "5:4", "4:5", 
+    "4:3", "3:4", "3:2", "2:3", "21:9"
+];
+
+// --- FUNGSI HELPER UTAMA ---
+
+// Fungsi mencari shape yang paling mirip dengan gambar asli
+function detectShape(buffer) {
+    try {
+        const dimensions = sizeOf(buffer);
+        const ratio = dimensions.width / dimensions.height;
+        
+        // Cari shape yang rasionya paling mendekati
+        let closestShape = "1:1";
+        let minDiff = Infinity;
+
+        VALID_SHAPES.forEach(shape => {
+            const [w, h] = shape.split(":").map(Number);
+            const shapeRatio = w / h;
+            const diff = Math.abs(ratio - shapeRatio);
+
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestShape = shape;
+            }
+        });
+
+        return closestShape;
+    } catch (e) {
+        console.error("Gagal mendeteksi ukuran, default ke 1:1", e);
+        return "1:1";
+    }
+}
+
+// --- FUNGSI API ---
 
 async function obtenerTurnstileToken() {
     const { data } = await axios.post(
         "https://api.nekolabs.web.id/tools/bypass/cf-turnstile",
-        {
-            url: "https://image-editor.org/editor",
-            siteKey: "0x4AAAAAACE-XLGoQUckKKm_"
-        },
-        {
-            headers: {
-                "Content-Type": "application/json",
-                "User-Agent": UA
-            }
-        }
+        { url: "https://image-editor.org/editor", siteKey: "0x4AAAAAACE-XLGoQUckKKm_" },
+        { headers: { "Content-Type": "application/json", "User-Agent": UA } }
     );
     if (!data.success) throw new Error("Gagal mendapatkan Turnstile Token");
     return data.result;
@@ -26,37 +55,25 @@ async function obtenerTurnstileToken() {
 async function obtenerUpload(filename) {
     const { data } = await axios.post(
         "https://image-editor.org/api/upload/presigned",
-        {
-            filename,
-            contentType: "image/jpeg"
-        },
-        {
-            headers: {
-                "Content-Type": "application/json",
-                "User-Agent": UA,
-                Referer: "https://image-editor.org/editor"
-            }
-        }
+        { filename, contentType: "image/jpeg" },
+        { headers: { "Content-Type": "application/json", "User-Agent": UA, Referer: "https://image-editor.org/editor" } }
     );
     return data.data;
 }
 
-// Dimodifikasi untuk menerima Buffer (bukan path file)
 async function subirImagen(uploadUrl, buffer) {
     await axios.put(uploadUrl, buffer, {
-        headers: {
-            "Content-Type": "image/jpeg"
-        }
+        headers: { "Content-Type": "image/jpeg" }
     });
 }
 
-async function editarImagen(fileUrl, uploadId, turnstileToken, prompt) {
+async function editarImagen(fileUrl, uploadId, turnstileToken, prompt, imageSize) {
     const { data } = await axios.post(
         "https://image-editor.org/api/edit",
         {
             prompt: prompt,
             image_urls: [fileUrl],
-            image_size: "9:16",
+            image_size: imageSize,
             turnstileToken,
             uploadIds: [uploadId],
             userUUID: "1e793048-8ddd-4eae-bc23-c613bf1711d7",
@@ -76,21 +93,12 @@ async function editarImagen(fileUrl, uploadId, turnstileToken, prompt) {
 
 async function esperarResultado(taskId) {
     let attempts = 0;
-    while (attempts < 60) { // Max 60 detik timeout
+    while (attempts < 120) { 
         const { data } = await axios.get(
             `https://image-editor.org/api/task/${taskId}`,
-            {
-                headers: {
-                    "User-Agent": UA,
-                    Referer: "https://image-editor.org/editor"
-                }
-            }
+            { headers: { "User-Agent": UA, Referer: "https://image-editor.org/editor" } }
         );
-
-        if (data.data.status === "completed") {
-            return data.data.result[0];
-        }
-
+        if (data.data.status === "completed") return data.data.result[0];
         await new Promise(r => setTimeout(r, 1000));
         attempts++;
     }
@@ -101,59 +109,79 @@ async function esperarResultado(taskId) {
 
 module.exports = {
     name: "AI Image Editor",
-    desc: "Edit gambar menggunakan prompt AI (Via Image-Editor.org)",
+    desc: "Edit gambar dengan prompt (Otomatis mendeteksi ukuran)",
     method: "GET",
     category: "ai",
-    path: "/editor",
-    params: ["url", "prompt"], // Parameter yang dibutuhkan
+    path: "/editorrr",
+    params: [
+        { name: 'url', required: true },
+        { name: 'prompt', required: true },
+        { name: 'shape', required: false } // Opsional, jika kosong akan auto-detect
+    ],
+    example: "/ai/editor?url=https://example.com/foto.jpg&prompt=make it anime",
     
     run: async (req, res) => {
-        const { url, prompt } = req.query;
+        let { url, prompt, shape } = req.query;
 
-        // Validasi Input
         if (!url) return res.json({ status: false, message: "Parameter 'url' wajib diisi!" });
         if (!prompt) return res.json({ status: false, message: "Parameter 'prompt' wajib diisi!" });
 
+        // Validasi Manual Shape jika user mengisinya
+        if (shape && !VALID_SHAPES.includes(shape)) {
+            return res.json({ 
+                status: false, 
+                message: "Parameter 'shape' tidak valid.",
+                available_shapes: VALID_SHAPES
+            });
+        }
+
         try {
-            // 1. Download Gambar dari URL User menjadi Buffer
+            // 1. Download Gambar
             const imageResponse = await axios.get(url, { responseType: 'arraybuffer' });
             const imageBuffer = Buffer.from(imageResponse.data);
-            
-            // 2. Dapatkan Token Turnstile
-            const turnstileToken = await obtenerTurnstileToken();
 
-            // 3. Dapatkan URL Upload Presigned
+            // 2. AUTO DETECT SHAPE (Jika user tidak mengisi shape)
+            let detectedShape = "1:1";
+            let mode = "manual";
+
+            if (!shape) {
+                detectedShape = detectShape(imageBuffer);
+                shape = detectedShape; // Gunakan hasil deteksi
+                mode = "auto";
+            }
+
+            // 3. Proses API
+            const turnstileToken = await obtenerTurnstileToken();
             const randomName = `image_${Date.now()}.jpg`;
             const upload = await obtenerUpload(randomName);
-
-            // 4. Upload Gambar User ke Server Editor
+            
             await subirImagen(upload.uploadUrl, imageBuffer);
 
-            // 5. Kirim Perintah Edit
             const taskId = await editarImagen(
                 upload.fileUrl,
                 upload.uploadId,
                 turnstileToken,
-                prompt
+                prompt,
+                shape
             );
 
-            // 6. Polling Hasil
             const hasilUrl = await esperarResultado(taskId);
 
-            // 7. Kirim Response JSON
             res.json({
                 status: true,
                 message: "Berhasil mengedit gambar",
                 result: {
                     original_url: url,
                     prompt: prompt,
+                    shape_mode: mode, // Info apakah manual atau auto
+                    used_shape: shape, // Ukuran yang akhirnya dipakai
                     edited_url: hasilUrl
                 }
             });
 
         } catch (error) {
             console.error(error);
-            res.json({
+            res.status(500).json({
                 status: false,
                 message: "Terjadi kesalahan saat memproses gambar.",
                 error: error.message
