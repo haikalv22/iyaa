@@ -35,7 +35,7 @@ function detectShape(buffer) {
 
         return closestShape;
     } catch (e) {
-        console.error("gagal mendeteksi ukuran, default ke 1:1", e);
+        console.error("Gagal mendeteksi ukuran, default ke 1:1", e);
         return "1:1";
     }
 }
@@ -48,7 +48,7 @@ async function obtenerTurnstileToken() {
         { url: "https://image-editor.org/editor", siteKey: "0x4AAAAAACE-XLGoQUckKKm_" },
         { headers: { "Content-Type": "application/json", "User-Agent": UA } }
     );
-    if (!data.success) throw new Error("gagal mendapatkan turnstile token");
+    if (!data.success) throw new Error("Gagal mendapatkan Turnstile Token");
     return data.result;
 }
 
@@ -102,17 +102,17 @@ async function esperarResultado(taskId) {
         await new Promise(r => setTimeout(r, 1000));
         attempts++;
     }
-    throw new Error("timeout menunggu hasil editing.");
+    throw new Error("Timeout menunggu hasil editing.");
 }
 
 // --- STRUKTUR PLUGIN ---
 
 module.exports = {
-    name: "edit foto",
-    desc: "edit gambar dengan prompt",
+    name: "AI Image Editor",
+    desc: "Edit gambar dengan prompt (Otomatis mendeteksi ukuran)",
     method: "GET",
     category: "ai",
-    path: "/edifoto",
+    path: "/editor",
     params: [
         { name: 'url', required: true },
         { name: 'prompt', required: true },
@@ -123,14 +123,14 @@ module.exports = {
     run: async (req, res) => {
         let { url, prompt, shape } = req.query;
 
-        if (!url) return res.json({ status: false, message: "parameter 'url' wajib diisi" });
-        if (!prompt) return res.json({ status: false, message: "parameter 'prompt' wajib diisi" });
+        if (!url) return res.json({ status: false, message: "Parameter 'url' wajib diisi!" });
+        if (!prompt) return res.json({ status: false, message: "Parameter 'prompt' wajib diisi!" });
 
         // Validasi Manual Shape jika user mengisinya
         if (shape && !VALID_SHAPES.includes(shape)) {
             return res.json({ 
                 status: false, 
-                message: "parameter 'shape' tidak valid.",
+                message: "Parameter 'shape' tidak valid.",
                 available_shapes: VALID_SHAPES
             });
         }
@@ -169,7 +169,7 @@ module.exports = {
 
             res.json({
                 status: true,
-                creator: "haikal",
+                message: "Berhasil mengedit gambar",
                 result: {
                     original_url: url,
                     prompt: prompt,
@@ -183,7 +183,7 @@ module.exports = {
             console.error(error);
             res.status(500).json({
                 status: false,
-                message: "terjadi kesalahan saat memproses gambar.",
+                message: "Terjadi kesalahan saat memproses gambar.",
                 error: error.message
             });
         }
