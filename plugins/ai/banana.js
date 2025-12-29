@@ -108,29 +108,28 @@ async function esperarResultado(taskId) {
 // --- STRUKTUR PLUGIN ---
 
 module.exports = {
-    name: "AI Image Editor",
-    desc: "Edit gambar dengan prompt (Otomatis mendeteksi ukuran)",
+    name: "edit foto",
+    desc: "edit gambar dengan prompt",
     method: "GET",
     category: "ai",
-    path: "/editorrr",
+    path: "/editfoto",
     params: [
         { name: 'url', required: true },
-        { name: 'prompt', required: true },
-        { name: 'shape', required: false } // Opsional, jika kosong akan auto-detect
+        { name: 'prompt', required: true }
     ],
     example: "/ai/editor?url=https://example.com/foto.jpg&prompt=make it anime",
     
     run: async (req, res) => {
         let { url, prompt, shape } = req.query;
 
-        if (!url) return res.json({ status: false, message: "Parameter 'url' wajib diisi!" });
-        if (!prompt) return res.json({ status: false, message: "Parameter 'prompt' wajib diisi!" });
+        if (!url) return res.json({ status: false, message: "parameter 'url' wajib diisi" });
+        if (!prompt) return res.json({ status: false, message: "parameter 'prompt' wajib diisi" });
 
         // Validasi Manual Shape jika user mengisinya
         if (shape && !VALID_SHAPES.includes(shape)) {
             return res.json({ 
                 status: false, 
-                message: "Parameter 'shape' tidak valid.",
+                message: "parameter 'shape' tidak valid.",
                 available_shapes: VALID_SHAPES
             });
         }
@@ -169,12 +168,8 @@ module.exports = {
 
             res.json({
                 status: true,
-                message: "Berhasil mengedit gambar",
+                creator: "haikal",
                 result: {
-                    original_url: url,
-                    prompt: prompt,
-                    shape_mode: mode, // Info apakah manual atau auto
-                    used_shape: shape, // Ukuran yang akhirnya dipakai
                     edited_url: hasilUrl
                 }
             });
@@ -183,7 +178,7 @@ module.exports = {
             console.error(error);
             res.status(500).json({
                 status: false,
-                message: "Terjadi kesalahan saat memproses gambar.",
+                message: "terjadi kesalahan saat memproses gambar.",
                 error: error.message
             });
         }
