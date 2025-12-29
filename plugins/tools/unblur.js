@@ -104,7 +104,7 @@ const downloadImage = async (url, filepath) => {
 module.exports = {
   name: 'Unblur Image AI',
   desc: 'Memperjelas dan meningkatkan resolusi gambar yang buram.',
-  category: 'Tools',
+  category: 'tools',
   method: 'GET',
   path: '/unblur',
   params: [
